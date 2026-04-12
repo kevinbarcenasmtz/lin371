@@ -178,13 +178,23 @@ def _normalize_fmp_json(
 
 
 def _load_txt_transcript(path: Path, ticker: str) -> dict:
-    """Load a local .txt transcript. Infers year/quarter from the filename."""
+    """Load a local .txt transcript. Infers year/quarter from the filename.
+
+    Strips the header block present in Mayank's transcript files:
+      Symbol: KO
+      Period: Q3 2006
+      Date: 2006-10-18
+      ================
+    """
     year, quarter = _parse_filename(path.stem)
+    content = path.read_text(encoding="utf-8")
+    content = re.sub(r"^(Symbol|Period|Date):.*\n", "", content, flags=re.MULTILINE)
+    content = re.sub(r"=+\n", "", content)
     return {
         "ticker": ticker,
         "year": year,
         "quarter": quarter,
-        "content": path.read_text(encoding="utf-8"),
+        "content": content.strip(),
         "date": None,
         "source": "local_txt",
         "filename": path.name,

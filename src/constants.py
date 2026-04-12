@@ -5,7 +5,7 @@ from pathlib import Path
 RANDOM_SEED = 42
 
 # Target companies
-TARGET_TICKERS: list[str] = ["AAPL", "MSFT", "GOOGL", "META", "AMZN", "KO"]
+TARGET_TICKERS: list[str] = ["AAPL", "MSFT", "GOOGL", "META", "AMZN", "KO", "PEP"]
 
 # Filesystem layout
 ROOT_DIR        = Path(__file__).parent.parent
