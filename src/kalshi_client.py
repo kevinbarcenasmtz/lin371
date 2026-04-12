@@ -9,6 +9,7 @@ Cache layout:
   data/raw/kalshi/events_{series_ticker}.json
   data/raw/kalshi/{event_ticker}.json
 """
+
 import json
 import logging
 import time
@@ -21,8 +22,10 @@ from src.constants import KALSHI_BASE_URL, RAW_KALSHI_DIR
 
 logger = logging.getLogger(__name__)
 
-_RATE_LIMIT_SLEEP = 0.2
-_PAGE_LIMIT = 100 # max results per page
+_RATE_LIMIT_SLEEP = 1.0  # seconds between paginated requests within an event
+_INTER_EVENT_SLEEP = 1.5  # seconds between events in pull_all_markets_for_ticker
+_PAGE_LIMIT = 100  # max results per page
+_MAX_RETRIES = 3  # retries on 429 before giving up
 
 
 class KalshiClient:
@@ -56,15 +59,14 @@ class KalshiClient:
         series_list: list[dict] = resp.json().get("series", [])
         q = query.lower()
         return [
-            s for s in series_list
+            s
+            for s in series_list
             if q in s.get("title", "").lower() or q in s.get("ticker", "").lower()
         ]
 
     # events
 
-    def get_events(
-        self, series_ticker: str, status: str = "settled"
-    ) -> list[dict]:
+    def get_events(self, series_ticker: str, status: str = "settled") -> list[dict]:
         """Fetch all events for a series ticker. Handles cursor-based pagination.
 
         Caches to data/raw/kalshi/events_{series_ticker}.json.
@@ -77,7 +79,12 @@ class KalshiClient:
         events = list(self._paginate_events(series_ticker, status))
         self.cache_root.mkdir(parents=True, exist_ok=True)
         cache_path.write_text(json.dumps(events, indent=2), encoding="utf-8")
-        logger.info("Cached %d events for series %s → %s", len(events), series_ticker, cache_path)
+        logger.info(
+            "Cached %d events for series %s → %s",
+            len(events),
+            series_ticker,
+            cache_path,
+        )
         return events
 
     def _paginate_events(
@@ -106,9 +113,7 @@ class KalshiClient:
 
     # ── Markets ──────────────────────────────────────────────────────────────
 
-    def get_markets(
-        self, event_ticker: str, status: str = "settled"
-    ) -> list[dict]:
+    def get_markets(self, event_ticker: str, status: str = "settled") -> list[dict]:
         """Fetch all markets for an event ticker. Handles cursor-based pagination.
 
         Caches to data/raw/kalshi/{event_ticker}.json.
@@ -123,13 +128,18 @@ class KalshiClient:
         markets = list(self._paginate_markets(event_ticker, status))
         self.cache_root.mkdir(parents=True, exist_ok=True)
         cache_path.write_text(json.dumps(markets, indent=2), encoding="utf-8")
-        logger.info("Cached %d markets for event %s → %s", len(markets), event_ticker, cache_path)
+        logger.info(
+            "Cached %d markets for event %s → %s",
+            len(markets),
+            event_ticker,
+            cache_path,
+        )
         return markets
 
     def _paginate_markets(
         self, event_ticker: str, status: str
     ) -> Generator[dict, None, None]:
-        """Yield all markets for an event across pages."""
+        """Yield all markets for an event across pages. Retries on 429."""
         url = f"{KALSHI_BASE_URL}/markets"
         cursor: str | None = None
         while True:
@@ -140,8 +150,20 @@ class KalshiClient:
             }
             if cursor:
                 params["cursor"] = cursor
-            resp = self.session.get(url, params=params, timeout=30)
-            resp.raise_for_status()
+            for attempt in range(_MAX_RETRIES):
+                resp = self.session.get(url, params=params, timeout=30)
+                if resp.status_code == 429:
+                    wait = 2**attempt * 2
+                    logger.warning(
+                        "429 rate limited; retrying in %ds (attempt %d/%d)",
+                        wait,
+                        attempt + 1,
+                        _MAX_RETRIES,
+                    )
+                    time.sleep(wait)
+                    continue
+                resp.raise_for_status()
+                break
             body = resp.json()
             markets: list[dict] = body.get("markets", [])
             yield from markets
@@ -169,12 +191,14 @@ class KalshiClient:
         logger.info("Pulling Kalshi markets for %s (series=%s)", ticker, series_ticker)
         events = self.get_events(series_ticker)
         all_markets: list[dict] = []
-        for event in events:
+        for i, event in enumerate(events):
             event_ticker = event.get("event_ticker") or event.get("ticker", "")
             if not event_ticker:
                 logger.warning("Skipping event with no ticker: %s", event)
                 continue
             markets = self.get_markets(event_ticker)
             all_markets.extend(markets)
+            if i < len(events) - 1:
+                time.sleep(_INTER_EVENT_SLEEP)
         logger.info("Total markets fetched for %s: %d", ticker, len(all_markets))
         return all_markets

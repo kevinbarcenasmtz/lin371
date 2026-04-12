@@ -6,6 +6,7 @@ Handles two input formats transparently:
 
 Both produce the same normalized dict so downstream code doesn't care.
 """
+
 import json
 import logging
 import os
@@ -52,9 +53,7 @@ class FMPClient:
 
     # ── Transcripts ──────────────────────────────────────────────────────────
 
-    def get_transcript(
-        self, ticker: str, year: int, quarter: int
-    ) -> Optional[dict]:
+    def get_transcript(self, ticker: str, year: int, quarter: int) -> Optional[dict]:
         """Fetch earnings call transcript for (ticker, year, quarter).
 
         Returns a normalized dict:
@@ -143,7 +142,14 @@ class FMPClient:
             "to": to_date,
             "apikey": self.api_key,
         }
-        logger.info("Fetching FMP news: %s %dQ%d (%s → %s)", ticker, year, quarter, from_date, to_date)
+        logger.info(
+            "Fetching FMP news: %s %dQ%d (%s → %s)",
+            ticker,
+            year,
+            quarter,
+            from_date,
+            to_date,
+        )
         resp = requests.get(url, params=params, timeout=30)
         resp.raise_for_status()
         data = resp.json()
@@ -157,9 +163,8 @@ class FMPClient:
 
 # ── Module-level helpers ──────────────────────────────────────────────────────
 
-def _normalize_fmp_json(
-    raw: list | dict, ticker: str, year: int, quarter: int
-) -> dict:
+
+def _normalize_fmp_json(raw: list | dict, ticker: str, year: int, quarter: int) -> dict:
     """Extract transcript text from FMP's array response into a normalized dict."""
     if isinstance(raw, list) and raw:
         entry = raw[0]
