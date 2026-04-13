@@ -164,6 +164,8 @@ class KalshiClient:
                     continue
                 resp.raise_for_status()
                 break
+            else:
+                resp.raise_for_status()  # exhaust retries → raise the 429
             body = resp.json()
             markets: list[dict] = body.get("markets", [])
             yield from markets

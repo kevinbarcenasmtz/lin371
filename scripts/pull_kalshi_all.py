@@ -77,11 +77,7 @@ def main() -> None:
                     ct = m.get("close_time", "")[:10]
                     if ct:
                         call_dates.append(ct)
-                time.sleep(
-                    client._INTER_EVENT_SLEEP
-                    if hasattr(client, "_INTER_EVENT_SLEEP")
-                    else 1.5
-                )
+                time.sleep(_INTER_SERIES_SLEEP)
 
             earliest = min(call_dates) if call_dates else ""
             latest = max(call_dates) if call_dates else ""
