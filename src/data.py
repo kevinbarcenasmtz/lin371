@@ -55,22 +55,50 @@ def clean_transcript(text: str) -> str:
 
 
 _PROCESSED_NAME_RE = re.compile(r"^([A-Za-z]+)_(\d{4})Q(\d)$")
+_DATES_SIDECAR = "_dates.csv"
+_DATES_CACHE: dict[tuple[str, int, int], str | None] | None = None
+
+
+def _load_dates_cache() -> dict[tuple[str, int, int], str | None]:
+    """Lazily load the (ticker, year, quarter) → call_date sidecar written by preprocess."""
+    global _DATES_CACHE
+    if _DATES_CACHE is None:
+        path = TRANSCRIPTS_DIR / _DATES_SIDECAR
+        if path.exists():
+            df = pd.read_csv(path)
+            _DATES_CACHE = {
+                (str(r.ticker), int(r.year), int(r.quarter)):
+                    (None if pd.isna(r.call_date) else str(r.call_date))
+                for r in df.itertuples(index=False)
+            }
+        else:
+            _DATES_CACHE = {}
+    return _DATES_CACHE
 
 
 def load_transcripts(ticker: str) -> list[dict]:
-    """Return cleaned transcripts for a ticker, sorted by (year, quarter) ascending."""
+    """Return cleaned transcripts for a ticker, sorted by (year, quarter) ascending.
+
+    Each dict carries a `date` field (ISO string or None) sourced from
+    `TRANSCRIPTS_DIR/_dates.csv`. Downstream code MUST filter priors by
+    this `date` rather than by `(year, quarter)` — see FIX_LEAKAGE.md.
+    """
+    dates = _load_dates_cache()
     results: list[dict] = []
     for path in sorted(TRANSCRIPTS_DIR.glob(f"{ticker}_*Q*.txt")):
         m = _PROCESSED_NAME_RE.match(path.stem)
         if not m:
             logger.warning("Unexpected filename in processed/transcripts: %s", path.name)
             continue
+        year = int(m.group(2))
+        quarter = int(m.group(3))
         results.append(
             {
                 "ticker": m.group(1),
-                "year": int(m.group(2)),
-                "quarter": int(m.group(3)),
+                "year": year,
+                "quarter": quarter,
                 "content": path.read_text(encoding="utf-8"),
+                "date": dates.get((ticker, year, quarter)),
             }
         )
     results.sort(key=lambda d: (d["year"], d["quarter"]))
@@ -80,7 +108,7 @@ def load_transcripts(ticker: str) -> list[dict]:
 
 
 def _iter_raw_transcripts(ticker: str) -> list[dict]:
-    """Read raw transcripts from both data/transcripts/ and data/raw/fmp/.
+    """Read raw transcripts from both data/raw/transcripts/ and data/raw/fmp/.
 
     Expanded corpus wins on (year, quarter) collisions.
     """
@@ -123,6 +151,12 @@ def preprocess_all_transcripts(tickers: list[str] | None = None) -> dict[str, in
     """Clean raw transcripts and write to data/processed/transcripts/. Returns per-ticker counts.
 
     Transcripts under MIN_TRANSCRIPT_WORDS after cleaning are logged and excluded.
+
+    Also writes a sidecar `_dates.csv` with the actual call date extracted
+    from each raw source (local txt header `Date:` line, or FMP's `date`
+    response field). This sidecar is required by `load_transcripts` and
+    by downstream `build_labels` / context builders to filter priors by
+    real calendar date — see FIX_LEAKAGE.md.
     """
     TRANSCRIPTS_DIR.mkdir(parents=True, exist_ok=True)
     if tickers is None:
@@ -136,6 +170,7 @@ def preprocess_all_transcripts(tickers: list[str] | None = None) -> dict[str, in
         tickers = sorted(discovered)
 
     counts: dict[str, int] = {}
+    date_rows: list[dict] = []
     for ticker in tickers:
         written = 0
         for raw in _iter_raw_transcripts(ticker):
@@ -162,8 +197,27 @@ def preprocess_all_transcripts(tickers: list[str] | None = None) -> dict[str, in
             out_path = TRANSCRIPTS_DIR / f"{ticker}_{year}Q{quarter}.txt"
             out_path.write_text(cleaned, encoding="utf-8")
             written += 1
+            date_rows.append({
+                "ticker": ticker,
+                "year": year,
+                "quarter": quarter,
+                "call_date": raw.get("date"),
+                "source": raw.get("source"),
+            })
         counts[ticker] = written
         logger.info("Preprocessed %s: %d transcripts written", ticker, written)
+
+    if date_rows:
+        dates_path = TRANSCRIPTS_DIR / _DATES_SIDECAR
+        pd.DataFrame(date_rows).to_csv(dates_path, index=False)
+        missing = sum(1 for r in date_rows if r["call_date"] in (None, "")
+                      or (isinstance(r["call_date"], float) and pd.isna(r["call_date"])))
+        logger.info("Wrote %s (%d rows, %d missing call_date)",
+                    dates_path, len(date_rows), missing)
+        # Invalidate the in-process cache so load_transcripts sees the fresh sidecar.
+        global _DATES_CACHE
+        _DATES_CACHE = None
+
     return counts
 
 
@@ -187,32 +241,56 @@ def build_labels(
     """Build labels.csv from Kalshi markets + the full transcript corpus.
 
     `mentioned` is Kalshi's settled `result` field. `hist_rate` is the
-    fraction of the row's ticker's transcripts *strictly before* the
-    market's (year, quarter) that contain `word` as a case-insensitive
-    whole-word match. Rows whose ticker has no prior transcripts (or no
-    transcripts at all) get `hist_rate = NaN`.
+    fraction of the row's ticker's transcripts **strictly before the
+    market's close date** that contain `word` as a case-insensitive
+    whole-word match. Rows whose ticker has no prior transcripts (or
+    whose transcripts lack usable dates) get `hist_rate = NaN`.
+
+    NOTE on the strictly-prior filter: we filter by actual call date
+    (transcript `Date:` header / FMP `date` field) compared against the
+    Kalshi market's `close_date` (fall back to `settlement_date`). The
+    prior (year, quarter)-tuple comparison leaked the target call's
+    own transcript into the "prior" set for calendar-year-fiscal
+    tickers — see FIX_LEAKAGE.md for the diagnosis.
     """
-    docs_by_ticker: dict[str, list[tuple[int, int, str]]] = {}
+    docs_by_ticker: dict[str, list[tuple[pd.Timestamp, str]]] = {}
+    missing_dates = 0
     for t in transcripts:
-        docs_by_ticker.setdefault(t["ticker"], []).append(
-            (t["year"], t["quarter"], t["content"])
+        tdate = pd.to_datetime(t.get("date"), errors="coerce")
+        if pd.isna(tdate):
+            missing_dates += 1
+            continue
+        docs_by_ticker.setdefault(t["ticker"], []).append((tdate, t["content"]))
+    if missing_dates:
+        logger.warning(
+            "build_labels: %d transcripts lack a parseable date and will be excluded "
+            "from hist_rate priors (fix by re-running preprocess_all_transcripts).",
+            missing_dates,
         )
 
-    hist_cache: dict[tuple[str, int, int, str], float] = {}
+    hist_cache: dict[tuple[str, pd.Timestamp, str], float] = {}
 
     rows = []
     for m in markets:
         ticker = m["company_label"]
         word = m["word"]
 
-        settlement = m.get("settlement_date") or m.get("close_date")
-        dt = pd.to_datetime(settlement, errors="coerce")
-        if pd.isna(dt):
-            logger.warning("Unparseable settlement_date for %s: %r", m.get("market_ticker"), settlement)
-            year, quarter = 0, 0
+        # Prediction time = close_date (trading halted) preferred over
+        # settlement_date (payout). For earnings-mention markets these
+        # are almost always the same day, but close_date is semantically
+        # the earlier of the two and therefore safer as a cutoff.
+        pred_time_str = m.get("close_date") or m.get("settlement_date")
+        pred_time = pd.to_datetime(pred_time_str, errors="coerce")
+        if pd.isna(pred_time):
+            logger.warning(
+                "Unparseable close/settlement for %s: %r",
+                m.get("market_ticker"), pred_time_str,
+            )
+            year, quarter, call_date_iso = 0, 0, None
         else:
-            year = int(dt.year)
-            quarter = _calendar_quarter(int(dt.month))
+            year = int(pred_time.year)
+            quarter = _calendar_quarter(int(pred_time.month))
+            call_date_iso = pred_time.date().isoformat()
 
         if "label" in m and pd.notna(m["label"]):
             mentioned = int(m["label"])
@@ -222,13 +300,16 @@ def build_labels(
         implied_prob = float(m["implied_prob"]) if pd.notna(m.get("implied_prob")) else float("nan")
         market_ticker = m.get("market_ticker", "")
 
-        cache_key = (ticker, year, quarter, word.lower())
+        cache_key = (ticker, pred_time, word.lower())
         if cache_key not in hist_cache:
-            prior_docs = [
-                content for (yr, q, content) in docs_by_ticker.get(ticker, [])
-                if (yr, q) < (year, quarter)
-            ]
-            hist_cache[cache_key] = _mention_rate(word, prior_docs)
+            if pd.isna(pred_time):
+                hist_cache[cache_key] = float("nan")
+            else:
+                prior_docs = [
+                    content for (tdate, content) in docs_by_ticker.get(ticker, [])
+                    if tdate < pred_time
+                ]
+                hist_cache[cache_key] = _mention_rate(word, prior_docs)
         hist_rate = hist_cache[cache_key]
 
         in_recent_news = 0
@@ -238,6 +319,7 @@ def build_labels(
                 "ticker": ticker,
                 "year": year,
                 "quarter": quarter,
+                "call_date": call_date_iso,
                 "word": word,
                 "mentioned": mentioned,
                 "implied_prob": implied_prob,
@@ -248,7 +330,7 @@ def build_labels(
         )
 
     df = pd.DataFrame(rows, columns=[
-        "ticker", "year", "quarter", "word", "mentioned",
+        "ticker", "year", "quarter", "call_date", "word", "mentioned",
         "implied_prob", "hist_rate", "in_recent_news", "market_ticker",
     ])
     logger.info(

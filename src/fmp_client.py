@@ -190,9 +190,16 @@ def _load_txt_transcript(path: Path, ticker: str) -> dict:
       Period: Q3 2006
       Date: 2006-10-18
       ================
+
+    The `Date:` header value (the actual call date) is preserved on the
+    returned dict as `date` so downstream code can filter priors by
+    real calendar date rather than fiscal (year, quarter) — see
+    FIX_LEAKAGE.md for why this matters.
     """
     year, quarter = _parse_filename(path.stem)
     content = path.read_text(encoding="utf-8")
+    date_match = re.search(r"^Date:\s*(\S+)", content, re.MULTILINE)
+    date_str = date_match.group(1) if date_match else None
     content = re.sub(r"^(Symbol|Period|Date):.*\n", "", content, flags=re.MULTILINE)
     content = re.sub(r"=+\n", "", content)
     return {
@@ -200,7 +207,7 @@ def _load_txt_transcript(path: Path, ticker: str) -> dict:
         "year": year,
         "quarter": quarter,
         "content": content.strip(),
-        "date": None,
+        "date": date_str,
         "source": "local_txt",
         "filename": path.name,
     }

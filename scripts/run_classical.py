@@ -1,8 +1,8 @@
 """Run TF-IDF + Logistic Regression and Decision Tree classifiers.
 
-Per-row input: TF-IDF of the ticker's transcripts strictly before (year, quarter),
-concatenated with numeric features (implied_prob, hist_rate, in_recent_news).
-Vectorizer is fit on training-split row contexts only.
+Per-row input: TF-IDF of the ticker's transcripts strictly before the market's
+close date, concatenated with numeric features (implied_prob, hist_rate,
+in_recent_news). Vectorizer is fit on training-split row contexts only.
 
 Follow-up analyses (see report/models_results_draft.md §4.4):
   --drop-implied-prob : ablation; exclude implied_prob from numeric features

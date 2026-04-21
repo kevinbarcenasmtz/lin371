@@ -32,8 +32,8 @@ cp .env.example .env             # fill in FMP_API_KEY if re-pulling FMP
 ### Mayank (FMP transcripts)
 
 Mayank collects earnings call transcripts from FMP and delivers them to
-`data/raw/fmp/` and `data/transcripts/`. Kevin does not run the FMP pull
-script. See `scripts/pull_fmp_transcripts.py` for the reference
+`data/raw/fmp/` and `data/raw/transcripts/`. Kevin does not run the FMP
+pull script. See `scripts/pull_fmp_transcripts.py` for the reference
 template/interface.
 
 ### Kevin (Kalshi markets)
@@ -66,33 +66,58 @@ The `--uncertain` flag is implemented on both run scripts but produces
 empty or near-empty test evaluations at the current snapshot time
 — see `report/models_results_draft.md` §4.4.2.
 
-DistilBERT (`scripts/run_distilbert.py`) is planned for P4 and not yet
-implemented.
+DistilBERT fine-tune (runs on the UTCS `pytorch-cuda` SSH box; see
+`SESSION_HANDOFF.md` for the pip install + WinSCP steps):
 
-## Current results (through P3 + follow-ups, 2026-04-21)
+```bash
+# Aggressive regime — the one that actually learns (§4.5.3)
+python scripts/run_distilbert.py --lr 5e-5 --epochs 5
 
-Dev/test on the cross-company split (155 dev rows, 184 test rows):
+# Conservative regime — standard BERT defaults; reported in §4.5.1
+# as methodology evidence only (flatlines at majority-class baseline)
+python scripts/run_distilbert.py
+```
+
+## Current results (through P4, 2026-04-21 post-leakage-fix)
+
+Dev/test on the cross-company split (155 dev rows, 184 test rows).
+All rows are **post-fix** (see `FIX_LEAKAGE.md` for the bug and
+`report/models_results_draft.md` §3.5 / §4.5.5 for disclosure).
 
 | Model                         | Dev F1-macro | Test F1-macro | Test ROI/trade |
 | ----------------------------- | -----------: | ------------: | -------------: |
 | Majority class                |       0.3621 |        0.3887 |       −$0.0267 |
 | Buy-all-Yes                   |       0.3621 |        0.3887 |       −$0.0267 |
-| Historical frequency (θ=0.25) |       0.5806 |        0.5071 |       −$0.0303 |
+| Historical frequency (θ=0.25) |       0.5742 |        0.5030 |       −$0.0304 |
 | Kalshi consensus              |       0.9803 |    **1.0000** |       −$0.0194 |
 | LogReg (C=0.01, full features) |      0.9869 |    **1.0000** |       −$0.0194 |
-| Decision Tree (d=10, full features) | 0.9739 |        0.9941 |       −$0.0195 |
-| LogReg — no `implied_prob`    |       0.5800 |        0.5146 |       −$0.0302 |
-| Decision Tree — no `implied_prob` | 0.6125  |        0.4998 |       −$0.0295 |
-| DistilBERT                    |            – |             – |              – |
+| Decision Tree (d=10, full features) | 0.9674 |        0.9762 |       −$0.0198 |
+| LogReg — no `implied_prob`    |       0.5675 |        0.5151 |       −$0.0302 |
+| Decision Tree — no `implied_prob` (d=5) | 0.5702 |   0.5156 |       −$0.0292 |
+| DistilBERT (text-only, lr=5e-5, ep=5) | 0.5925 | 0.5560 | −$0.0293 |
 
 **Headline:** Kalshi's pre-call consensus is effectively correct at the
 0.5 threshold, so classification accuracy saturates at ~1.0 for any
 model that sees `implied_prob`. The ablation removes `implied_prob` and
 shows classical models collapse to roughly the hist_freq baseline —
-TF-IDF + historical prior alone is not much above majority. Every model
-loses money on ROI because fees eat the tiny payouts on extreme-priced
-markets. See `report/models_results_draft.md` §4.3–§4.4 for the full
-discussion.
+TF-IDF + historical prior alone is not much above majority.
+DistilBERT text-only beats the classical text-only ablation by ~4 F1
+points (0.556 vs LogReg-no-`implied_prob` 0.515). Surprisingly, this
+edge is *larger* post-fix than pre-fix (the pre-fix 0.527 was pulled
+down by a degenerate positive-collapse that the fix corrected — see
+§4.5.5 for the pre/post comparison). Every model loses money on ROI
+because fees eat the tiny payouts on extreme-priced markets. See
+`report/models_results_draft.md` §4.3–§4.5 for the full discussion.
+
+**Note on DistilBERT hyperparameters.** The run we report uses
+`lr=5e-5, epochs=5`, which is more aggressive than standard BERT
+fine-tune defaults. The standard defaults (`lr=2e-5, epochs=3`)
+produced a degenerate majority-class classifier on this dataset; the
+retune disambiguated "model undertrained" from "task unlearnable
+text-only". Dev F1 peaked at epoch 3 (0.5925) and decayed monotonically
+thereafter, so with `load_best_model_at_end=True` the reported test
+metrics correspond to a 3-epoch-trained model with 5-epoch patience.
+See `report/models_results_draft.md` §4.5 for the full methodology.
 
 ## Repo layout
 

@@ -70,25 +70,35 @@ def build_numeric_features(df: pd.DataFrame, cols: list[str] | None = None) -> n
 
 
 def build_row_context_texts(df: pd.DataFrame) -> list[str]:
-    """For each row, concatenate the ticker's cleaned transcripts strictly before (year, quarter).
+    """For each row, concatenate the ticker's cleaned transcripts strictly before the call date.
 
     Returns a list of strings aligned with df's rows. Empty string for rows
-    whose ticker has no prior transcripts.
+    whose ticker has no prior transcripts, whose row lacks a usable
+    `call_date`, or whose transcripts all lack parseable dates. The
+    strictly-prior filter compares transcript `date` (from the
+    `_dates.csv` sidecar) against the row's `call_date` — see
+    FIX_LEAKAGE.md for why (year, quarter) tuples were unsafe.
     """
-    transcripts_by_ticker: dict[str, list[tuple[int, int, str]]] = {}
+    transcripts_by_ticker: dict[str, list[tuple[pd.Timestamp, str]]] = {}
     for ticker in df["ticker"].unique():
         for t in load_transcripts(ticker):
-            transcripts_by_ticker.setdefault(ticker, []).append(
-                (t["year"], t["quarter"], t["content"])
-            )
+            tdate = pd.to_datetime(t.get("date"), errors="coerce")
+            if pd.isna(tdate):
+                continue
+            transcripts_by_ticker.setdefault(ticker, []).append((tdate, t["content"]))
 
     texts: list[str] = []
     empty_count = 0
     for _, row in df.iterrows():
-        ticker, year, quarter = row["ticker"], int(row["year"]), int(row["quarter"])
+        ticker = row["ticker"]
+        pred_time = pd.to_datetime(row.get("call_date"), errors="coerce")
+        if pd.isna(pred_time):
+            empty_count += 1
+            texts.append("")
+            continue
         prior = [
-            content for (yr, q, content) in transcripts_by_ticker.get(ticker, [])
-            if (yr, q) < (year, quarter)
+            content for (tdate, content) in transcripts_by_ticker.get(ticker, [])
+            if tdate < pred_time
         ]
         if not prior:
             empty_count += 1
@@ -113,28 +123,37 @@ def build_recent_context_texts(df: pd.DataFrame, max_recent: int = 2) -> list[st
       1. Keeps only the `max_recent` newest prior transcripts (not all prior).
       2. Concatenates newest-first, so head-truncation at 512 tokens preserves
          the freshest content — matches the DistilBERT §6.3 input convention.
+
+    Strictly-prior is date-based: transcript `date` (from `_dates.csv`)
+    compared against row `call_date`. See FIX_LEAKAGE.md.
     """
-    transcripts_by_ticker: dict[str, list[tuple[int, int, str]]] = {}
+    transcripts_by_ticker: dict[str, list[tuple[pd.Timestamp, str]]] = {}
     for ticker in df["ticker"].unique():
         for t in load_transcripts(ticker):
-            transcripts_by_ticker.setdefault(ticker, []).append(
-                (t["year"], t["quarter"], t["content"])
-            )
+            tdate = pd.to_datetime(t.get("date"), errors="coerce")
+            if pd.isna(tdate):
+                continue
+            transcripts_by_ticker.setdefault(ticker, []).append((tdate, t["content"]))
 
     texts: list[str] = []
     empty_count = 0
     for _, row in df.iterrows():
-        ticker, year, quarter = row["ticker"], int(row["year"]), int(row["quarter"])
+        ticker = row["ticker"]
+        pred_time = pd.to_datetime(row.get("call_date"), errors="coerce")
+        if pd.isna(pred_time):
+            empty_count += 1
+            texts.append("")
+            continue
         prior = [
-            (yr, q, content) for (yr, q, content) in transcripts_by_ticker.get(ticker, [])
-            if (yr, q) < (year, quarter)
+            (tdate, content) for (tdate, content) in transcripts_by_ticker.get(ticker, [])
+            if tdate < pred_time
         ]
         if not prior:
             empty_count += 1
             texts.append("")
             continue
-        prior.sort(key=lambda r: (r[0], r[1]), reverse=True)
-        chosen = [content for (_, _, content) in prior[:max_recent]]
+        prior.sort(key=lambda r: r[0], reverse=True)
+        chosen = [content for (_, content) in prior[:max_recent]]
         texts.append(" ".join(chosen))
     if empty_count:
         logger.info(
