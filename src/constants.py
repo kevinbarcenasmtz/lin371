@@ -12,6 +12,8 @@ TARGET_TICKERS: list[str] = ["AAPL", "MSFT", "GOOGL", "META", "AMZN", "KO", "PEP
 ROOT_DIR = Path(__file__).parent.parent
 DATA_DIR = ROOT_DIR / "data"
 RAW_FMP_DIR = DATA_DIR / "raw" / "fmp"
+# Layout: data/transcripts/{TICKER}_transcripts/{TICKER}_{YEAR}_Q{N}.txt
+EXPANDED_TRANSCRIPTS_DIR = DATA_DIR / "transcripts"
 RAW_KALSHI_DIR = DATA_DIR / "raw" / "kalshi"
 RAW_NEWS_DIR = DATA_DIR / "raw" / "news"
 PROCESSED_DIR = DATA_DIR / "processed"
