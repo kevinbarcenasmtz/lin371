@@ -88,12 +88,12 @@ All rows are **post-fix** (see `FIX_LEAKAGE.md` for the bug and
 | ----------------------------- | -----------: | ------------: | -------------: |
 | Majority class                |       0.3621 |        0.3887 |       −$0.0267 |
 | Buy-all-Yes                   |       0.3621 |        0.3887 |       −$0.0267 |
-| Historical frequency (θ=0.25) |       0.5742 |        0.5030 |       −$0.0304 |
+| Historical frequency (θ=0.25) |       0.5806 |        0.5071 |       −$0.0303 |
 | Kalshi consensus              |       0.9803 |    **1.0000** |       −$0.0194 |
 | LogReg (C=0.01, full features) |      0.9869 |    **1.0000** |       −$0.0194 |
-| Decision Tree (d=10, full features) | 0.9674 |        0.9762 |       −$0.0198 |
-| LogReg — no `implied_prob`    |       0.5675 |        0.5151 |       −$0.0302 |
-| Decision Tree — no `implied_prob` (d=5) | 0.5702 |   0.5156 |       −$0.0292 |
+| Decision Tree (d=10, full features) | 0.9739 |        0.9941 |       −$0.0195 |
+| LogReg — no `implied_prob`    |       0.5800 |        0.5146 |       −$0.0302 |
+| Decision Tree — no `implied_prob` (d=5) | 0.6125 |   0.4998 |       −$0.0295 |
 | DistilBERT (text-only, lr=5e-5, ep=5) | 0.5925 | 0.5560 | −$0.0293 |
 
 **Headline:** Kalshi's pre-call consensus is effectively correct at the
