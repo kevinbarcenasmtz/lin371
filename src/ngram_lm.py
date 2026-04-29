@@ -1,46 +1,39 @@
-"""N-gram language model interface — Mayank's implementation.
+"""N-gram language model — TRACK DROPPED 2026-04-21.
 
-Kevin's pipeline imports NgramLM from here. Mayank implements the method bodies.
+The original plan (IMPLEMENTATION.md §6, §8) included a parallel n-gram
+language modeling track owned by Mayank, evaluated by perplexity. On
+2026-04-21 the team agreed to go classification-only; Mayank ran his
+own classification experiments instead. The interface below was the
+contract Kevin's pipeline depended on; it is preserved as documentation
+of the original design and is not imported anywhere in the current
+codebase.
 
-Interface contract (§8 of IMPLEMENTATION.md):
-  - fit() trains on cleaned transcript strings from data/processed/transcripts/
-  - perplexity() evaluates on held-out transcripts
-  - word_probability() optionally feeds a feature column into Kevin's classifier
+See IMPLEMENTATION.md "Status update — 2026-04-21" for context.
 """
 
 
 class NgramLM:
-    """Bigram/trigram language model with smoothing.
+    """[Dropped] Bigram/trigram LM with smoothing — never implemented.
 
-    Mayank's deliverable: implement all methods, write perplexity results to
-    outputs/results/ngram_metrics.csv.
+    Kept as a record of the original §8 integration contract. All methods
+    return None to make accidental imports a soft no-op rather than a hard
+    crash, but no live code path calls into this class.
     """
 
     def __init__(
         self, n: int = 3, smoothing: str = "laplace", alpha: float = 1.0
     ) -> None:
-        """Initialize the n-gram model.
-
-        Args:
-            n: n-gram order (2 = bigram, 3 = trigram).
-            smoothing: smoothing method ("laplace" or "kneser_ney").
-            alpha: smoothing parameter (Laplace add-alpha).
-        """
-        raise NotImplementedError("NgramLM.__init__ — Mayank's implementation pending.")
+        self.n = n
+        self.smoothing = smoothing
+        self.alpha = alpha
 
     def fit(self, texts: list[str]) -> None:
-        """Train on a list of cleaned transcript strings."""
-        raise NotImplementedError("NgramLM.fit — Mayank's implementation pending.")
+        return None
 
-    def perplexity(self, text: str) -> float:
-        """Return perplexity on a held-out transcript string."""
-        raise NotImplementedError("NgramLM.perplexity — Mayank's implementation pending.")
+    def perplexity(self, text: str) -> float | None:
+        return None
 
     def word_probability(
         self, word: str, context: list[str] | None = None
-    ) -> float:
-        """Return P(word | context). If context is None, return marginal P(word).
-
-        Used by Kevin's pipeline as an optional feature for classification.
-        """
-        raise NotImplementedError("NgramLM.word_probability — Mayank's implementation pending.")
+    ) -> float | None:
+        return None

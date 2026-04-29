@@ -151,8 +151,9 @@ def main() -> None:
     _eval_and_log("dev", dev_preds, dev, config)
     _eval_and_log("test", test_preds, test, config)
 
-    np.save(Path(output_dir) / "test_probs.npy", test_probs)
-    logger.info("Saved test positive-class probs to %s/test_probs.npy", output_dir)
+    probs_name = "test_probs_smoke.npy" if args.smoke_test else "test_probs.npy"
+    np.save(Path(output_dir) / probs_name, test_probs)
+    logger.info("Saved test positive-class probs to %s/%s", output_dir, probs_name)
 
     write_results_table()
 
