@@ -5,8 +5,8 @@ sentence-pair task so the tokenizer keeps the word intact and head-truncates
 the context to 512 tokens. Trained on the full train split, tuned on dev via
 macro-F1, evaluated once on test at the end.
 
-Run on UTCS SSH box inside tmux (activate `pytorch-cuda` + pip install --user
-transformers datasets). Checkpoints saved to outputs/models/distilbert/best/.
+Runs on any CUDA-capable machine; falls back to CPU if no GPU is available.
+Checkpoints saved to outputs/models/distilbert/best/.
 
 Usage:
     python scripts/run_distilbert.py

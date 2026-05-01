@@ -1,4 +1,4 @@
-"""Decision tree classifier (section 6 of IMPLEMENTATION.md).
+"""Decision tree classifier.
 
 max_depth is tuned on the dev set; included for interpretability.
 """

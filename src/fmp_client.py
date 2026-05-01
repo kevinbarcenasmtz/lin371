@@ -193,8 +193,9 @@ def _load_txt_transcript(path: Path, ticker: str) -> dict:
 
     The `Date:` header value (the actual call date) is preserved on the
     returned dict as `date` so downstream code can filter priors by
-    real calendar date rather than fiscal (year, quarter) — see
-    FIX_LEAKAGE.md for why this matters.
+    real calendar date rather than fiscal (year, quarter) — fiscal-vs-
+    calendar mismatch leaks the target call's own transcript into its
+    own "prior" set on shifted-fiscal tickers.
     """
     year, quarter = _parse_filename(path.stem)
     content = path.read_text(encoding="utf-8")

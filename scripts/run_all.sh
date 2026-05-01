@@ -31,8 +31,9 @@ echo "=== Stage 2: Flatten Kalshi JSON to wide CSV ==="
 
 echo "=== Stage 3: Build labels.csv + cross-company splits ==="
 # Cleans raw transcripts (data/raw/transcripts/ + data/raw/fmp/), joins with
-# Kalshi markets, computes hist_rate from strictly-prior transcripts (date-
-# based; see FIX_LEAKAGE.md), and writes data/processed/{labels.csv,splits/}.
+# Kalshi markets, computes hist_rate from strictly-prior transcripts (filtered
+# by real call date, not by (year, quarter) tuple, to avoid fiscal-vs-calendar
+# leakage), and writes data/processed/{labels.csv,splits/}.
 "$PYTHON" scripts/build_dataset.py
 
 echo "=== Stage 4: Baselines (majority, consensus, buy-all-yes, hist_freq) ==="

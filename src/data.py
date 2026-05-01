@@ -81,7 +81,8 @@ def load_transcripts(ticker: str) -> list[dict]:
 
     Each dict carries a `date` field (ISO string or None) sourced from
     `TRANSCRIPTS_DIR/_dates.csv`. Downstream code MUST filter priors by
-    this `date` rather than by `(year, quarter)` — see FIX_LEAKAGE.md.
+    this `date` rather than by `(year, quarter)` to avoid fiscal-vs-
+    calendar quarter leakage on tickers whose fiscal year is shifted.
     """
     dates = _load_dates_cache()
     results: list[dict] = []
@@ -156,7 +157,8 @@ def preprocess_all_transcripts(tickers: list[str] | None = None) -> dict[str, in
     from each raw source (local txt header `Date:` line, or FMP's `date`
     response field). This sidecar is required by `load_transcripts` and
     by downstream `build_labels` / context builders to filter priors by
-    real calendar date — see FIX_LEAKAGE.md.
+    real calendar date (rather than by fiscal `(year, quarter)` tuple,
+    which leaks on tickers whose fiscal year is shifted).
     """
     TRANSCRIPTS_DIR.mkdir(parents=True, exist_ok=True)
     if tickers is None:
@@ -250,8 +252,8 @@ def build_labels(
     (transcript `Date:` header / FMP `date` field) compared against the
     Kalshi market's `close_date` (fall back to `settlement_date`). The
     prior (year, quarter)-tuple comparison leaked the target call's
-    own transcript into the "prior" set for calendar-year-fiscal
-    tickers — see FIX_LEAKAGE.md for the diagnosis.
+    own transcript into the "prior" set for tickers whose fiscal year
+    is shifted relative to the calendar year.
     """
     docs_by_ticker: dict[str, list[tuple[pd.Timestamp, str]]] = {}
     missing_dates = 0

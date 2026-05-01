@@ -1,4 +1,4 @@
-"""Baseline classifiers (section 6 of IMPLEMENTATION.md).
+"""Baseline classifiers.
 
   MajorityClassifier  — predict the dominant training class
   KalshiConsensus     — predict 1 if implied_prob > 0.5

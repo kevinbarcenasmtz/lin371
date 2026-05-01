@@ -1,4 +1,4 @@
-"""TF-IDF + Logistic Regression classifier (section 6 of IMPLEMENTATION.md).
+"""TF-IDF + Logistic Regression classifier.
 
 Regularization C is tuned via 5-fold CV on training data only.
 """

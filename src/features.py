@@ -76,8 +76,9 @@ def build_row_context_texts(df: pd.DataFrame) -> list[str]:
     whose ticker has no prior transcripts, whose row lacks a usable
     `call_date`, or whose transcripts all lack parseable dates. The
     strictly-prior filter compares transcript `date` (from the
-    `_dates.csv` sidecar) against the row's `call_date` — see
-    FIX_LEAKAGE.md for why (year, quarter) tuples were unsafe.
+    `_dates.csv` sidecar) against the row's `call_date`; (year, quarter)
+    tuples are unsafe here because fiscal years can be shifted relative
+    to the calendar year.
     """
     transcripts_by_ticker: dict[str, list[tuple[pd.Timestamp, str]]] = {}
     for ticker in df["ticker"].unique():
@@ -122,10 +123,10 @@ def build_recent_context_texts(df: pd.DataFrame, max_recent: int = 2) -> list[st
     Differs from `build_row_context_texts` in two ways:
       1. Keeps only the `max_recent` newest prior transcripts (not all prior).
       2. Concatenates newest-first, so head-truncation at 512 tokens preserves
-         the freshest content — matches the DistilBERT §6.3 input convention.
+         the freshest content — matches the DistilBERT input convention.
 
     Strictly-prior is date-based: transcript `date` (from `_dates.csv`)
-    compared against row `call_date`. See FIX_LEAKAGE.md.
+    compared against row `call_date`.
     """
     transcripts_by_ticker: dict[str, list[tuple[pd.Timestamp, str]]] = {}
     for ticker in df["ticker"].unique():

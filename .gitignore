@@ -3,6 +3,7 @@
 __pycache__/
 *.pyc
 *.pyo
+.ipynb_checkpoints/
 data/raw/
 data/processed/transcripts
 outputs/models/
@@ -10,3 +11,4 @@ outputs/logs/
 *.md
 *.tex
 data/processed
+*.bib

@@ -1,13 +1,13 @@
-"""DistilBERT fine-tuning for binary mention classification (§6 of IMPLEMENTATION.md).
+"""DistilBERT fine-tuning for binary mention classification.
 
 Input format: "{target_word} [SEP] {company_context_window}"
 Context window = most recent 2 historical transcripts (newest-first concat),
 head-truncated to 512 tokens by the tokenizer.
 
-Hyperparameters (nlp_agents.md §7.2):
+Default hyperparameters (overridable via the CLI in scripts/run_distilbert.py):
   lr=2e-5, batch_size=16, epochs=3, warmup_ratio=0.1, weight_decay=0.01, max_seq_len=512
 
-Trained on UTCS SSH box; checkpoints saved to outputs/models/distilbert/.
+Checkpoints saved to outputs/models/distilbert/.
 """
 from __future__ import annotations
 
